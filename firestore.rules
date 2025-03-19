@@ -1,0 +1,68 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function hasPermission(permission) {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions.hasAny([permission]);
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+    }
+
+    // Activity logs
+    match /activity_logs/{logId} {
+      allow read: if isAuthenticated() && (isAdmin() || hasPermission('view_activity_logs'));
+      allow write: if false; // Only Firebase Functions can write
+    }
+
+    // Resource usage
+    match /resource_usage/{docId} {
+      allow read: if isAuthenticated() && (isAdmin() || hasPermission('view_analytics'));
+      allow write: if false; // Only Firebase Functions can write
+    }
+
+    // API logs
+    match /api_logs/{logId} {
+      allow read: if isAuthenticated() && (isAdmin() || hasPermission('view_analytics'));
+      allow write: if false; // Only Firebase Functions can write
+    }
+
+    // Roles and permissions
+    match /roles/{document=**} {
+      allow read: if isAuthenticated() && hasPermission('manage:roles');
+      allow write: if isAuthenticated() && hasPermission('manage:roles');
+    }
+
+    match /permissions/{document=**} {
+      allow read: if isAuthenticated() && hasPermission('manage:permissions');
+      allow write: if isAuthenticated() && hasPermission('manage:permissions');
+    }
+
+    // Database collections
+    match /{collection}/{document=**} {
+      allow read: if isAuthenticated() && hasPermission('read:database');
+      allow create: if isAuthenticated() && hasPermission('write:database');
+      allow update: if isAuthenticated() && hasPermission('write:database');
+      allow delete: if isAuthenticated() && hasPermission('delete:database');
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+} 

@@ -1,0 +1,37 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function hasPermission(permission) {
+      return isAuthenticated() && 
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.permissions.hasAny([permission]);
+    }
+
+    // Activity logs
+    match /activity_logs/{allPaths=**} {
+      allow read: if isAuthenticated() && (isAdmin() || hasPermission('view_activity_logs'));
+      allow write: if false; // Only Firebase Functions can write
+    }
+
+    // Analytics data
+    match /analytics/{allPaths=**} {
+      allow read: if isAuthenticated() && (isAdmin() || hasPermission('view_analytics'));
+      allow write: if false; // Only Firebase Functions can write
+    }
+
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+} 
